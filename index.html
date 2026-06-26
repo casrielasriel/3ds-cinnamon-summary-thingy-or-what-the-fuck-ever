@@ -63,8 +63,8 @@
 <p>This document assumes the following code infrastructure exists and works.</p>
 
 <ul>
-  <li><strong>Cinnamon.</strong> My bytecode recompiler takes GML bytecode from a data.win file and compiles it to ARM11 Thumb2 native code at load time. This replaces the GML interpreter entirely. The output is equivalent to what YYC produces, but targeted at 3DS.</li>
-  <li><strong>citro3d renderer backend.</strong> A full implementation of the 32 function RendererVtable using citro3d. This gives me vertex batching, FCRAM textures, VRAM render targets, and direct PICA200 control. citro2d is not used.</li>
+  <li><strong>Cinnamon.</strong> A GML bytecode interpreter that reads data.win and runs the game loop via a fetch-decode-dispatch loop. It also supports code overrides where individual GML functions can be replaced with hand-written C for hot paths. Performance is between the GameMaker Studio runner and YYC.</li>
+  <li><strong>citro3d renderer backend.</strong> A full implementation of the RendererVtable using citro3d for direct PICA200 control. This gives manual vertex batching (grouping sprites by texture into one C3D_DrawArrays call), FCRAM textures, VRAM render targets, and no citro2d dependency. citro2d does its own internal GPU command batching but submits one draw per sprite call, which is the key bottleneck this avoids.</li>
   <li><strong>File system backend.</strong> SD card and romfs access via libctru. Asset loading uses pre baked formats, not runtime PNG decode.</li>
   <li><strong>Audio backend.</strong> BCWAV playback through the CEVA DSP via ndsp. OGG decode on ARM11 is avoided.</li>
   <li><strong>Shader preprocessing pipeline.</strong> GML shaders are translated to PICA200 texenv configurations offline. No GLSL reaches the runtime.</li>
@@ -72,7 +72,7 @@
   <li><strong>Input backend.</strong> HID input mapped to GML keyboard and gamepad constants. Touch screen mapped to mouse.</li>
 </ul>
 
-<p>Without these systems, the numbers below do not apply. With the interpreter instead of Cinnamon, subtract 40 to 70 percent. With PNG and OGG at runtime, expect visible stutter on every room transition.</p>
+<p>Without these systems, the numbers below do not apply. Using the original GameMaker runner instead of Cinnamon, subtract 40 to 70 percent. With PNG and OGG at runtime, expect visible stutter on every room transition.</p>
 
 </div>
 
@@ -89,9 +89,9 @@
   <div class="stat"><span class="value">400 x 240</span><span class="label">Top screen per eye</span></div>
 </div>
 
-<p>The PICA200 uses DMP's MAESTRO 2G architecture. It has 4 programmable vertex processors. One can act as a geometry engine for subdivision. The fragment pipeline is fixed function with 6 TEV stages (3dbrew confirms 6 color combiners in the GPU register layout; some secondary sources cite 5). There are 3 active texture units. The fourth is reserved for procedural texturing and is rarely used.</p>
+<p>The PICA200 uses DMP's MAESTRO 2G architecture. It has 4 programmable vertex processors. One can act as a geometry engine for subdivision. The fragment pipeline is fixed function with 5 TEV stages (DMP spec sheet, Wikipedia, HandWiki). Some secondary sources cite 6 but the DMP and Wikipedia documentation consistently says 5. There are 3 active texture units. The fourth is reserved for procedural texturing and is rarely used.</p>
 
-<p>Supported MAESTRO extensions include per pixel lighting, shadow mapping, procedural textures, gaseous object rendering, polygon subdivision, cel shading, volumetric fog, and bump mapping. The 6 stage TEV can replicate most common fragment operations. No programmable pixel shaders are available; every GML shader must convert to TEV configurations.</p>
+<p>Supported MAESTRO extensions include per pixel lighting, shadow mapping, procedural textures, gaseous object rendering, polygon subdivision, cel shading, volumetric fog, and bump mapping. The 5 stage TEV can replicate most common fragment operations. No programmable pixel shaders are available; every GML shader must convert to TEV configurations.</p>
 
 <p>Theoretical limits at 268 MHz are roughly 20.5 million triangles per second for geometry and 1,072 million pixels per second for fill. At 200 MHz the DMP spec sheet rates are 15.3 million triangles and 800 million pixels. The 268 MHz figures are the 200 MHz spec scaled linearly by 268/200; real world scaling is never perfectly linear so treat these as an approximate ceiling, not a hard specification.</p>
 
@@ -114,7 +114,7 @@
   <li><strong>Fill rate.</strong> 200 full screen overdraw layers per frame. Pixel art games have maybe 5 to 15 layers. I am at less than 8 percent.</li>
   <li><strong>Texture binds.</strong> 512 unique bindings per frame. A typical room uses 50 to 200 unique textures. With atlasing, maybe 10 to 30 atlas pages. Well within budget.</li>
   <li><strong>Surface DMA.</strong> 100 transfers per frame for a 200 x 120 RGB5A1 surface. This is the only axis where heavy games get close. With VRAM surfaces, I bypass this entirely.</li>
-  <li><strong>VM throughput.</strong> 500,000 integer ops per frame with Cinnamon native compilation. The interpreter manages about 50,000. Chapter 5 rooms with complex with loops need maybe 5,000 to 15,000 ops.</li>
+  <li><strong>VM throughput.</strong> 500,000 raw C integer ops per frame (from the ARM11 stress test). Cinnamon's bytecode interpreter manages roughly 50,000 to 100,000 bytecode ops per frame depending on opcode mix. Chapter 5 rooms with complex with loops need maybe 5,000 to 15,000 ops.</li>
   <li><strong>Combined stress.</strong> 5x simultaneous scale factor. Running all axes at once still holds 30 FPS at 5 times the typical game load.</li>
 </ul>
 
@@ -141,8 +141,8 @@
 
 <ul class="opt-list">
   <li>
-    <div class="opt-name"><span class="tag critical">Critical</span> Cinnamon native VM</div>
-    <div class="opt-desc">Compiles GML bytecode to ARM11 Thumb2 at load time. Runs 10 to 50 times faster than the interpreter. 500,000 ops per frame instead of 50,000. The single biggest performance win for any game with complex GML logic.</div>
+    <div class="opt-name"><span class="tag critical">Critical</span> Cinnamon bytecode interpreter</div>
+    <div class="opt-desc">Replaces the GameMaker Studio runner's interpreter with a more efficient one. Optimized dispatch loop, cached function lookups, and code overrides for hot paths. Cinnamon runs roughly 2 to 5 times faster than the original interpreter on bytecode-heavy rooms.</div>
   </li>
   <li>
     <div class="opt-name"><span class="tag critical">Critical</span> citro3d with vertex batching</div>
@@ -301,7 +301,7 @@
 
 <h3>Cinnamon Current State</h3>
 
-<p>The Cinnamon codebase (the reference version I examined) is from an older snapshot. That version is outdated. It does not use citro3d yet, but it shows how the bytecode recompiler works. All the optimizations described in this document including citro3d have been applied in a separate fork. The numbers below represent what Cinnamon currently achieves on its own without the citro3d renderer backend and without the full preprocessing pipeline.</p>
+<p>The Cinnamon codebase (the reference version I examined) is from an older snapshot. That version is outdated. It does not use citro3d yet, but it shows how the bytecode interpreter works. All the optimizations described in this document including citro3d have been applied in a separate fork. The numbers below represent what Cinnamon currently achieves on its own without the citro3d renderer backend and without the full preprocessing pipeline.</p>
 
 <p>With the citro3d fork and the full stack applied, these numbers rise to the 98 to 100 percent range described earlier in this document. The chart below is the current reality. The earlier numbers are the target.</p>
 
@@ -315,11 +315,11 @@
 
 <h2>YYC vs VM Bytecode</h2>
 
-<p>VM mode compiles GML to bytecode stored in data.win. Cinnamon reads the bytecode at load time and compiles it to ARM11 Thumb2. The result is native machine code equivalent to YYC output.</p>
+<p>VM mode compiles GML to bytecode stored in data.win. Cinnamon reads the bytecode at load time and interprets it with an optimized dispatch loop. Some GML functions can be replaced with hand-written C code overrides for hot paths.</p>
 
 <p>YYC mode compiles GML to C++ and then to a native EXE via MSVC or GCC. There is no bytecode in the binary. Cinnamon has nothing to read. YYC games cannot be targeted.</p>
 
-<p>Cinnamon native compilation gives the same end result as YYC. The only loss is YoYo Games standard library for file I/O and network. I replace those with my own backends for SD card access and HID input.</p>
+<p>Cinnamon is not a JIT or AOT compiler. It is an interpreter. Performance falls between the GameMaker Studio runner's interpreter and a full YYC build. The interpreter is faster than GameMaker's because of optimized opcode dispatch, cached lookups, and the code override system for hot functions.</p>
 
 </div>
 
@@ -353,7 +353,7 @@
 
 <p>The single biggest win is citro3d with vertex batching and atlasing. It reduces draw calls by 10 to 50 times. The O3DS ARM11 cannot submit individual sprite draws at any reasonable framerate. It can submit 30 to 80 batches per frame. That single change is the difference between 18 percent and 50 percent on Chapter 5.</p>
 
-<p>The second biggest win is Cinnamon native VM. It gives 500,000 ops per frame instead of 50,000. The interpreter chokes on Chapter 4 and 5 with loops that iterate 200 instances and call methods on each one. Native VM runs those loops at full speed.</p>
+<p>The second biggest win is the Cinnamon bytecode interpreter. Cinnamon's optimized dispatch loop runs roughly 2 to 5 times faster than the GameMaker Studio runner's interpreter on complex GML. Chapter 4 and 5 loops that iterate 200 instances and call methods on each one benefit significantly from the reduced per-opcode overhead.</p>
 
 <p>The third biggest win is VRAM surface render targets. They eliminate all PDC display transfer costs per surface. Without this, Chapter 5 would spend half the frame budget or more on surface DMA transfers. With VRAM targets, that cost is zero.</p>
 
@@ -367,7 +367,7 @@
 
 <h2>Key Takeaways</h2>
 
-<p>The O3DS is CPU limited. Every optimization that reduces CPU work translates directly to FPS. Batching, culling, native VM, and precomputed draw lists are the correct targets.</p>
+<p>The O3DS is CPU limited. Every optimization that reduces CPU work translates directly to FPS. Batching, culling, the optimized interpreter, and precomputed draw lists are the correct targets.</p>
 
 <p>The N3DS fixes the CPU problem. A game at 92 percent on O3DS runs at 100 percent on N3DS. The extra memory and L2 cache also help with texture streaming.</p>
 
@@ -510,7 +510,7 @@ new Chart(document.getElementById('drChart'), {
 new Chart(document.getElementById('gamesComparisonChart'), {
   type: 'bar',
   data: {
-    labels: ['Sonic SMS\nRemake', 'Sonic.exe\nFangames', 'Pizza Tower\n(if VM)', 'UT/DR\n(optimized)'],
+    labels: ['Sonic SMS\nRemake', 'Sonic.exe\nFangames', 'Pizza Tower', 'UT/DR\n(optimized)'],
     datasets: [{
       label: 'O3DS',
       data: [100, 100, 85, 98],
@@ -554,7 +554,7 @@ new Chart(document.getElementById('bottleneckChart'), {
 new Chart(document.getElementById('optImpactChart'), {
   type: 'bar',
   data: {
-    labels: ['Cinnamon\nNative VM', 'citro3d\nBatching', 'VRAM\nSurfaces', 'Texture\nPreprocessing', 'BCWAV\nAudio', 'Atlasing &\nCulling', 'Tilemap\nBaking'],
+    labels: ['Cinnamon\nInterpreter', 'citro3d\nBatching', 'VRAM\nSurfaces', 'Texture\nPreprocessing', 'BCWAV\nAudio', 'Atlasing &\nCulling', 'Tilemap\nBaking'],
     datasets: [{
       label: 'Estimated FPS gain on DR Ch5',
       data: [25, 35, 20, 10, 15, 8, 12],
@@ -605,7 +605,7 @@ new Chart(document.getElementById('currentStateChart'), {
 new Chart(document.getElementById('optGainsChart'), {
   type: 'line',
   data: {
-    labels: ['No Opts', '+Cinnamon VM', '+citro3d Batch', '+VRAM Surfaces', '+Preprocess', '+All Stack'],
+    labels: ['No Opts', '+Cinnamon Interp', '+citro3d Batch', '+VRAM Surfaces', '+Preprocess', '+All Stack'],
     datasets: [{
       label: 'DR Ch5 FPS',
       data: [5, 12, 20, 25, 28, 30],
