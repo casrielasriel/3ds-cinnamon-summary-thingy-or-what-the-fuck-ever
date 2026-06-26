@@ -89,11 +89,11 @@
   <div class="stat"><span class="value">400 x 240</span><span class="label">Top screen per eye</span></div>
 </div>
 
-<p>The PICA200 uses DMP's MAESTRO 2G architecture. It has 4 programmable vertex processors. One can act as a geometry engine for subdivision. The fragment pipeline is fixed function with 5 TEV stages. There are 3 active texture units. The fourth is reserved for procedural texturing and is rarely used.</p>
+<p>The PICA200 uses DMP's MAESTRO 2G architecture. It has 4 programmable vertex processors. One can act as a geometry engine for subdivision. The fragment pipeline is fixed function with 6 TEV stages (3dbrew confirms 6 color combiners in the GPU register layout; some secondary sources cite 5). There are 3 active texture units. The fourth is reserved for procedural texturing and is rarely used.</p>
 
-<p>Supported MAESTRO extensions include per pixel lighting, shadow mapping, procedural textures, gaseous object rendering, polygon subdivision, cel shading, volumetric fog, and bump mapping. The 5 stage TEV can replicate most common fragment operations. No programmable pixel shaders are available; every GML shader must convert to TEV configurations.</p>
+<p>Supported MAESTRO extensions include per pixel lighting, shadow mapping, procedural textures, gaseous object rendering, polygon subdivision, cel shading, volumetric fog, and bump mapping. The 6 stage TEV can replicate most common fragment operations. No programmable pixel shaders are available; every GML shader must convert to TEV configurations.</p>
 
-<p>Theoretical limits at 268 MHz are roughly 20.5 million triangles per second for geometry and 1,072 million pixels per second for fill. At 200 MHz the spec sheet rates are 15.3 million triangles and 800 million pixels.</p>
+<p>Theoretical limits at 268 MHz are roughly 20.5 million triangles per second for geometry and 1,072 million pixels per second for fill. At 200 MHz the DMP spec sheet rates are 15.3 million triangles and 800 million pixels. The 268 MHz figures are the 200 MHz spec scaled linearly by 268/200; real world scaling is never perfectly linear so treat these as an approximate ceiling, not a hard specification.</p>
 
 <p>The O3DS is CPU limited. The ARM11 at 268 MHz cannot feed the PICA200 draw calls fast enough. Commercial 3DS games typically push 3 to 6 million triangles per second. The N3DS at 804 MHz with 2 MB L2 cache solves this bottleneck entirely.</p>
 
