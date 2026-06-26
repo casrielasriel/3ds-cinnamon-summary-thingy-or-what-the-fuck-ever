@@ -360,13 +360,43 @@
 
 <h3>Pizza Tower</h3>
 
-<p>Pizza Tower ships as bytecode. Cinnamon can target it directly.</p>
+<p>Pizza Tower ships as bytecode. The bytecode itself is targetable by Cinnamon. The audio is not.</p>
 
-<p>My estimate is 85 percent on O3DS and 100 percent on N3DS. Pizza Tower has constant screen shake, heavy particle systems, transformation effects, surface based CRT overlay, and high speed layer scrolling. The per frame load is higher than Deltarune Chapter 5. The Pizza Time sequences with maximum screen effects would push the O3DS hard. N3DS would hold 30 FPS without issue.</p>
+<p>Unlike every other game in this list, Pizza Tower targets 60 FPS, not 30. Its frame budget is 16.6ms instead of 33ms. The percentage figures below are fractions of that 16.6ms budget, not 33ms. An 85 percent score here means roughly 9 dropped frames per second against 60 FPS, noticeably worse than the same number would look on a 30 FPS game.</p>
+
+<p>My estimate is 42 percent on O3DS and 85 percent on N3DS for rendering and logic alone. Pizza Tower has constant screen shake, heavy particle systems, transformation effects, a surface-based CRT overlay, and high speed layer scrolling. The per frame load is higher than Deltarune Chapter 5 and the halved frame budget makes every bottleneck twice as punishing. The Pizza Time sequences with maximum screen effects would push the O3DS extremely hard. N3DS gets close but still drops frames on the heaviest moments. Locking to 30 FPS as a fallback would put both systems at a comfortable 100 percent, but that is a design tradeoff, not a hardware limit.</p>
+
+<h4>FMOD: a hard wall for audio</h4>
+
+<p>Pizza Tower does not store audio in data.win. All sound is in external FMOD Studio bank files: master.bank, sfx.bank, and music.bank, stored alongside the executable. The game uses a custom extension DLL, fmod-gamemaker.dll, built by the Pizza Tower developers specifically for Windows. This DLL bridges GML extension function calls to the FMOD Studio runtime. FMOD Studio itself is a separate C++ middleware library that ships as platform-specific native binaries.</p>
+
+<p>None of this exists on 3DS and none of it can. A DLL is a Windows PE binary. The FMOD Studio runtime has no 3DS ARM11 build and Firelight Technologies does not publish one. The GML calls in Pizza Tower's code hit functions like fmod_event_create, fmod_event_play, and fmod_param_set. When those functions are called, control leaves GML entirely and enters the native extension. On 3DS there is no native extension to enter.</p>
+
+<p>The only working approach seen in the wild is the one used by the unofficial Switch port (TurtleHouse, D-Official). Every FMOD function is stubbed in GML. A custom fmod_sound struct type replaces FMOD events. Each event is manually mapped: the bank files are cracked open with FMOD Bank Tools, individual audio files are extracted, and every event's sound list is hardcoded by hand in GML. The music tracks use GameMaker's native audio_play_sound with loop point logic to replicate FMOD's intro-then-loop pattern. Positional sounds map to GameMaker audio emitters. This is a total rewrite of Pizza Tower's audio layer, not a shim.</p>
+
+<p>For a 3DS port this work is the same, with the additional constraint that the output audio must be BCWAV rather than OGG or WAV. Every extracted sound file would need conversion through vgmstream or a similar tool before the DSP can play it natively. The fmod_sound stub layer would call ndsp directly or go through a thin GML wrapper over the BCWAV playback backend. The GML-facing API stays identical to what the game expects; the implementation underneath replaces everything.</p>
+
+<p>This is separately scoped work from the renderer and bytecode work. Rendering and logic compatibility does not imply audio compatibility. Pizza Tower needs both.</p>
 
 <div class="chart-container tall">
   <canvas id="gamesComparisonChart"></canvas>
 </div>
+
+<h3>Pizza Tower: SAGE 2019 Demo</h3>
+
+<p>The SAGE 2019 demo is an earlier, lighter build of Pizza Tower released at the Sonic Amateur Games Expo in 2019. It predates the final game's FMOD integration. Audio in the demo uses GameMaker's built-in sound system rather than FMOD bank files, which removes the external DLL dependency entirely. This makes the SAGE demo a substantially easier port target than the final game.</p>
+
+<p>The demo runs on GameMaker Studio 2 and targets WAD version 17. It includes three levels (Pizzascape, The Ancient Cheese, Bloodsauce Dungeon), the Snick the Porcupine character exclusive to this build, a Cowboy Task Room, and the Pizzamart item shop system with Pizza Coins and purchasable shotguns, both features cut from later builds. The frame budget is still 16.6ms; the game runs at 60 FPS same as the final release.</p>
+
+<p>The per-frame load is meaningfully lower than the final game. Fewer surfaces, simpler particle counts, no CRT overlay shader, and no FMOD event overhead. The rendering estimate for the SAGE demo is 60 percent on O3DS and 95 percent on N3DS. The FMOD blocker does not apply. Audio preprocessing to BCWAV using the standard pipeline is sufficient. This is the most practical Pizza Tower port target for Cinnamon in its current state.</p>
+
+<h3>Antonball Classic</h3>
+
+<p>Antonball Classic is a Game Boy-aesthetic brick-breaker platformer hybrid developed by Tony Grayson (Summitsphere) for GB Jam 7 in August 2019, built in three days. It placed fifth out of 112 entries. The game combines Arkanoid-style ball mechanics with a side-view platform character who kicks the ball rather than using a paddle. It ships on GameMaker: Studio and targets WAD version 16 or lower; the jam timeline places it squarely in the GMS 1.4 era.</p>
+
+<p>The visual constraints of GB Jam 7 required a 160x144 resolution, four colors only, and no analog stick input, matching original Game Boy hardware limits. The game has six levels and no surface effects, no shaders, no particle systems, and no complex with() loops. Audio is GameMaker's native sound system with no external extensions.</p>
+
+<p>Estimate: 100 percent on O3DS. This is among the lightest possible GameMaker ports. The 160x144 render resolution is a fraction of the 3DS top screen. Draw call count per frame is in the dozens at most. The only work beyond standard Cinnamon compatibility is confirming the exact WAD version from the data.win header and verifying GML function coverage for the ball physics and collision code. Antonball Classic later became the basis for Antonball Deluxe (2021) and the Anton series, which includes Antonblast (2024).</p>
 
 <h3>Cinnamon Current State</h3>
 
@@ -599,8 +629,150 @@
 
 </div>
 
+<div class="section">
+
+<h2>Deep Hardware Reference: Screens and Input</h2>
+
+<h3>Top Screen: Autostereoscopic Parallax Barrier</h3>
+
+<p>The top screen is an 800x240 TFT LCD manufactured by Sharp. In 2D mode all 800 columns are used as a single framebuffer at full brightness. In 3D mode a second LCD layer called the parallax barrier activates between the pixel layer and the backlight. The barrier contains precisely spaced opaque slits that block alternating pixel columns from each eye; the left eye sees even columns, the right eye sees odd columns. Each eye therefore receives a 400x240 image, which is the working resolution for all 3D content. The brain combines the two slightly offset images into a perception of depth without glasses. This is autostereoscopic parallax, the same principle as lenticular printing but implemented electronically.</p>
+
+<p>Because the barrier physically blocks half the backlight, enabling 3D mode reduces screen brightness and increases battery drain. The 3D depth slider on the right side of the top screen electrically adjusts the slit width in the parallax barrier LCD, controlling how much depth offset appears between the two eye images. Sliding it to zero disables the barrier entirely and returns the display to full 2D mode. The New 3DS added face-tracking via the front-facing camera (QTM service) to dynamically compensate for head tilt, expanding the viable viewing angle. The original 3DS requires the user to hold the screen within a narrow sweet spot or crosstalk (ghosting between the two eye images) becomes visible.</p>
+
+<p>From a rendering standpoint: stereoscopic mode requires two separate framebuffers on the top screen, each 384 KB at RGBA8 full resolution, consuming 768 KB of VRAM before any other allocation. Most homebrew and Cinnamon run in 2D mode to reclaim that second framebuffer slot and avoid the brightness penalty. The PDC (display controller) manages the framebuffer swap at vsync; C3D_FrameEnd signals the PDC after rendering completes.</p>
+
+<h3>Bottom Screen: Resistive Touchscreen</h3>
+
+<p>The bottom screen is a 320x240 TFT LCD with a resistive touch overlay. Resistive means the digitizer works by physical pressure deforming two conductive layers until they contact; it does not require a bare finger and works with the included stylus, a fingernail, or any firm pointed object. It reports a single touch point only; multi-touch is not supported. The 3DS has no capacitive screen at all.</p>
+
+<p>Touch coordinates are read through the HID service via hidTouchRead(), which returns a touchPosition struct containing px (0 to 320) and py (0 to 240) in screen pixels, plus a touched boolean. The coordinate origin is top-left (0, 0) to bottom-right (320, 240). The HID service updates touch state every HID frame (roughly once per game frame at 60 Hz polling). Cinnamon maps hidTouchRead() output directly to GML's device_mouse_x_to_gui / device_mouse_y_to_gui equivalents, scaling from the 320x240 touch space into whatever coordinate space the game uses.</p>
+
+<p>The MCU (auxiliary microcontroller, Renesas UC CTR) monitors the touch controller IC (Texas Instruments PAIC3010B) and routes data to the HID service over the SoC master I2C bus. Calibration data is stored in NAND and applied by the HID module before exposing coordinates to userland. Miscalibrated digitizers can be recalibrated from the system settings menu; the raw ADC values map to screen pixels via a stored 2-point linear calibration.</p>
+
+<h3>Input: Buttons, Circle Pad, and the HID Shared Memory</h3>
+
+<p>The HID module exposes all input through a shared memory region at a fixed address. hidScanInput() copies the current hardware state into that region each call; hidKeysDown(), hidKeysHeld(), and hidKeysUp() operate on the cached copy. The button bitmask covers A, B, X, Y, L, R, Start, Select, D-pad (4 directions), and the home button. The circle pad reports a signed 12-bit x/y value in the range -156 to +156 (approximately; the hardware has some variance). The circle pad is an analog stick with no click, driven by strain-gauge sensors rather than a potentiometer.</p>
+
+<p>The New 3DS added a second circle stick (the C-stick, a small rubber nub above the face buttons) and ZL/ZR shoulder buttons. These are exposed through the IR HID service (hid:IR) rather than the standard HID shared memory. Standard homebrew using libctru accesses them via hidCstickRead() and checking the ZL/ZR flags in hidKeysHeld(). The C-stick reports a smaller range than the circle pad, roughly -160 to +160.</p>
+
+<p>For Cinnamon's input backend: keyboard constants (vk_left, vk_right, vk_up, vk_down, ord('Z'), ord('X'), etc.) map to 3DS button bitmasks. The circle pad maps to GML's gamepad axis functions. Touch maps to mouse position and mouse_check_button. The mapping table is a straightforward lookup; the only complexity is the coordinate system translation for touch.</p>
+
+</div>
+
+<div class="section">
+
+<h2>Deep Hardware Reference: SoC and Memory Architecture</h2>
+
+<h3>The Nintendo 1048 SoC</h3>
+
+<p>The entire compute core of the 3DS lives in a single System on Chip branded as the Nintendo 1048 0H (O3DS) or CPU LGR A (N3DS). It contains the ARM11 MPCore CPU cluster, the ARM9 processor, the PICA200 GPU, the CEVA DSP, and the 6 MB VRAM, all on one die. The ARM9 runs at 134 MHz and handles cryptographic services, filesystem access, and low-level hardware initialization. User-mode homebrew has no direct access to the ARM9; it is isolated behind the kernel. FCRAM and NAND are external to the SoC.</p>
+
+<p>The O3DS SoC has two ARM11 cores. Core 0 (appcore) runs user applications. Core 1 (syscore) runs system software including the GSP (GPU service process). Homebrew cannot use syscore for application threads; it is reserved. The N3DS SoC has four ARM11 cores. Cores 2 and 3 are available to homebrew applications for explicit background threads. Core 1 still runs system services. In practice, most homebrew and all Cinnamon work runs on core 0 alone; the additional N3DS cores go unused unless the application explicitly creates threads and assigns them.</p>
+
+<p>The FCRAM is a Fujitsu MB82M8080-07L, a CMOS Fast Cycle RAM with LPDDR interface, accessible in a 64-bit bus. Two dies: MB81EDS516545 (the FCRAM die) and MB82DBS08645. The LPDDR interface gives the bandwidth figure of approximately 3.2 GB/s. The ARM11 and PICA200 share this bus, which means heavy ARM11 memory traffic (large with() loops sweeping instance arrays) reduces effective GPU texture sampling bandwidth. This bus contention is the mechanism behind the "CPU limited" characterization of the O3DS: the ARM11 starves the PICA200 of FCRAM bandwidth as well as consuming draw-call submission time.</p>
+
+<h3>ARM11 MPCore: Pipeline and Cache in Detail</h3>
+
+<p>The ARM11 MPCore implements the ARMv6K ISA. It is a single-issue in-order pipeline with no branch prediction and no out-of-order execution. Every instruction executes in program order, one per cycle when the pipeline is fully fed. On a cache miss the pipeline stalls until the data arrives from L2 or FCRAM; there is no reorder buffer to fill the stall slots with other work. Measured stall penalty is roughly 10 to 15 cycles for an L1 miss that hits L2, and significantly more for an L2 miss that goes to FCRAM. At 268 MHz with the 30 percent APT limit (~80 MHz effective), an L2 miss costs approximately 0.5 to 1 microsecond of stall time per occurrence. A with() loop over 200 instances that misses L2 on each iteration loses roughly 100 to 200 microseconds per frame iteration to stall alone.</p>
+
+<p>The VFPv2 coprocessor handles IEEE 754 single-precision float. It is not a SIMD unit; each VFP instruction operates on a single float register. Throughput for vectorized math is low. GML uses doubles internally for number values; the runner converts to float for draw operations. The VFP stall behavior differs from the integer pipeline but the in-order execution constraint applies equally.</p>
+
+<p>Thumb2 is the preferred encoding for code density. A 32-bit ARM instruction and a 16-bit Thumb2 encoding can perform the same operation; the smaller code footprint improves L1 instruction cache hit rate. The compiler (devkitARM GCC or Clang) generates Thumb2 by default for the 3DS target. The Cinnamon interpreter hot loop benefits from Thumb2 because the dispatch table and opcode handler prologs fit in fewer cache lines.</p>
+
+<p>The N3DS clock multiplier is set per-application via a flag in the application's extended header. When the flag is present, the ARM11 kernel enables the 3x multiplier, raising the CPU to 804 MHz. The GPU, ARM9, and DSP remain at their original clock rates; only the ARM11 scales. The 2 MB L2 cache enables on the same flag. An application without the flag runs at 268 MHz even on N3DS hardware. osSetSpeedupEnable(true) is the libctru call that activates the higher speed from homebrew code.</p>
+
+<h3>SDIO and SD Card Bandwidth</h3>
+
+<p>The SD card interface uses SDIO over the GPIO bus. Measured read throughput on O3DS is approximately 5 MB/s, limited by the SDIO controller, not the card speed class. A class 10 or UHS-I card produces the same measured throughput as a class 4 on 3DS hardware; the controller is the ceiling. Nintendo recommends SD cards up to 32 GB formatted FAT32 with 64 KB allocation units. Cards up to 2 TB have been tested and work, with increasing boot time overhead proportional to card capacity. A 256 GB card adds approximately 7 to 8 seconds to boot time versus no SD card.</p>
+
+<p>For Cinnamon: a room transition loading 12 MB of atlas pages over this 5 MB/s link takes 2 to 3 seconds. Texture group streaming (loading the next room's assets in the background while gameplay continues) is the correct solution. N3DS FCRAM doubling to 256 MB gives 93 MB of heap for homebrew instead of 31 MB, which means more atlas pages can stay resident across transitions without unloading, directly reducing the per-transition load window.</p>
+
+</div>
+
+<div class="section">
+
+<h2>Deep Hardware Reference: PICA200 in Detail</h2>
+
+<h3>Origin and Architecture</h3>
+
+<p>The PICA200 is a graphics IP core designed by Digital Media Professionals Inc. (DMP), a Japanese fabless semiconductor company founded in 2000. DMP's previous work was the ULTRAY2000, a proof-of-concept MAESTRO GPU presented at SIGGRAPH 2005. The PICA200 announced at SIGGRAPH 2005 and demonstrated with an FPGA prototype (the "Mikage" demo, co-developed with Futuremark) at SIGGRAPH 2006. DMP announced Nintendo's adoption of PICA200 for the 3DS on June 21, 2010. The chip is fabbed at 65 nm and is rated at up to 400 MHz; Nintendo clocks it at 268 MHz in the 3DS.</p>
+
+<p>PICA200 implements the MAESTRO-2G architecture. MAESTRO stands for DMP's proprietary graphics framework. The key design goal was hardware acceleration of advanced shading effects at low power, targeting embedded devices where programmable GPU pipelines (as found on desktop GPUs) would consume too much die area and power. MAESTRO-2G achieves this by encoding complex shading operations as fixed-function hardware stages rather than general-purpose shader programs. The result is a GPU that cannot run arbitrary shader code but can execute specific complex effects (subsurface scattering, soft shadows, procedural textures) in hardware at essentially zero cost, because those paths are hardwired logic rather than shader instruction streams.</p>
+
+<p>The PICA200 supports OpenGL ES 1.1 as a baseline API, plus DMP's proprietary extensions. The baseline covers vertex arrays, texture mapping, alpha blending, depth test, stencil test, and basic lighting. The extensions add the MAESTRO feature set. In the 3DS homebrew stack, citro3d does not expose OpenGL ES; it exposes the PICA200's hardware directly in a stateful C API that maps to GX commands.</p>
+
+<h3>Vertex Processors and Primitive Engine</h3>
+
+<p>The PICA200 has four programmable vertex processors. Each accepts a vertex from the vertex buffer, executes a vertex shader program (called a vertex shader but implemented via PICA200's own instruction set, not GLSL), and outputs a transformed vertex. The vertex shader instruction set supports 128 operations including matrix multiply, dot product, min/max, and conditional branches. Vertex constants are 96 vec4 registers (32 per vertex shader, per 3dbrew documentation) holding transform matrices, lighting parameters, and user data. The fourth processor, called the Primitive Engine, can be configured as either a geometry shader (processing primitives rather than individual vertices, supporting Catmull-Clark and Loop subdivision) or as a standard fourth vertex processor. For Cinnamon's 2D sprite rendering, the Primitive Engine runs as a fourth vertex processor; no geometry shaders are used.</p>
+
+<p>After vertex processing, primitives assemble (triangles, lines, points), pass through viewport transform, then enter the rasterizer. The rasterizer generates fragments at the rated 800 million pixels per second at 200 MHz (approximately 1,072 Mpx/s at the 3DS's 268 MHz, scaling linearly). Scissor testing, depth testing, and stencil testing occur per fragment.</p>
+
+<h3>TEV: The Fixed-Function Fragment Pipeline</h3>
+
+<p>The TEV (Texture Environment) unit is the heart of PICA200's fragment processing. It has 6 stages (3dbrew documents 6; the document you are reading previously stated 5 based on secondary sources, but the primary 3dbrew hardware page is the authoritative count). Each stage has three texture/color inputs, a combiner operation (replace, modulate, add, add-signed, interpolate, subtract, dot3-RGB, dot3-RGBA, multiply-then-add, add-then-multiply), and a scale factor (1x, 2x, 4x). The outputs chain: stage 0's output is available as GPU_PREVIOUS in stage 1, and so on. A separate buffer (GPU_PREVIOUS_BUFFER) can store the result of any stage for use two stages later; writing to the buffer in stage N makes it available in stage N+2. The final TEV stage output feeds the output merger (alpha blend, logic ops, color write mask).</p>
+
+<p>The TEV replaces programmable pixel shaders entirely. GML's shader_set() calls reference GLSL programs; PICA200 has no GLSL pipeline. Every GML shader must be translated to a TEV configuration at build time. Most blend modes map cleanly: additive blending is (GPU_ADD, src, dst), multiply blend is (GPU_MODULATE, src, dst), color tint is (GPU_MODULATE, sprite_color, tint_color), alpha blend is the standard output merger blend. Complex fragment effects involving dependent texture reads, bump mapping, or screen-space operations require more stages and may require pre-baking. The MAESTRO fog extension (used for Deltarune's d3d_set_fog calls) maps directly to the PICA200 hardware fog unit, which applies linear or exponential distance fog at zero TEV cost.</p>
+
+<p>Procedural texture generation (proctex) is the fourth texture unit's exclusive function. It generates texture data on-chip from a programmable function rather than reading from memory. This enables palette effects, animated UV patterns, and gradient generation with zero memory bandwidth cost. proctex is rarely used in commercial games and has no GML equivalent; it is available to citro3d users directly via C3D_ProcTex.</p>
+
+<h3>citro2d vs citro3d: The Critical Distinction</h3>
+
+<p>citro2d is a 2D sprite library built on top of citro3d. It provides a simplified API: C2D_DrawSprite, C2D_DrawRectSolid, C2D_DrawTriangle, and so on. citro2d handles its own internal vertex batching; it groups consecutive draw calls into batches internally, submitting a C3D_DrawArrays only when state changes force a flush. The critical limitation: citro2d's batching flushes on every texture change. If 200 sprites across 50 different textures are drawn in a single frame, citro2d submits up to 50 draw calls. More importantly, citro2d was written for general 2D use and does not expose surface management; in the reference Cinnamon codebase, surface_create is stubbed to return -1 because citro2d provides no render-to-texture pathway. Surface compositing effects (dark world lighting, CRT overlay, camera shake blit) are impossible without surfaces.</p>
+
+<p>citro3d is the underlying library citro2d is built on. It exposes the PICA200 directly: vertex buffers, texture binding, TEV configuration, render targets, and GX command submission. The developer is responsible for batching, vertex format declaration, and state management. This is more work but enables the optimizations that citro2d cannot provide. Specifically: manual batching can group all sprites sharing a texture page into one draw call regardless of interleaved draw order, because the developer controls when to submit and can sort by texture first. FCRAM texture binding via C3D_TexBind reads from system RAM directly with zero VRAM copy; this is what the 10 MB real-hardware test confirmed at 59.8 FPS. Render targets (surfaces) work correctly in citro3d via C3D_RenderTargetCreate, C3D_FrameSetTarget, and the render-then-copy approach that frees VRAM slots immediately after each surface draw. None of these are available through citro2d's API surface.</p>
+
+<p>The practical consequence for Cinnamon: the reference codebase uses citro2d and cannot implement surfaces or achieve the draw call reduction needed for heavy Deltarune chapters. The fork that adds citro3d replaces citro2d entirely, rebuilds the renderer around manual vertex buffers and explicit batching, and implements the VRAM render-then-copy surface system. That fork is what the performance numbers in this document reflect when cited as "optimized." The reference codebase numbers are what appear in the "Cinnamon Current State" chart.</p>
+
+</div>
+
+<div class="section">
+
+<h2>Deep GameMaker Research</h2>
+
+<h3>The data.win File Format</h3>
+
+<p>GameMaker compiles all game assets into a single binary file called data.win on Windows, data.ios on iOS, data.droid on Android, and game.unx on Linux. The format is an IFF-derived container; YoYo Games CEO Russell Kay called it a WAD file, which is the project's internal name. The root container chunk is FORM, and it contains a sequence of named child chunks, each with a 4-byte magic, a 4-byte byte count, and then the chunk data. The complete chunk list in a typical GMS 1.4 build is: GEN8 (general metadata), OPTN (game options), LANG (localization), EXTN (extensions), SOND (sound definitions), AGRP (audio groups), SPRT (sprites), BGND (backgrounds), PATH (paths), SCPT (scripts), GLOB (globals), SHDR (shaders), FONT (fonts), TMLN (timelines), OBJT (objects), ROOM (rooms), DAFL (datafiles), TPAG (texture pages), CODE (bytecode), VARI (variables), FUNC (function table), STRG (string table), TXTR (texture data), and AUDO (audio data).</p>
+
+<p>TXTR stores PNG-compressed texture pages at runtime; each TXTR entry contains a length-prefixed PNG blob. The PICA200 cannot read PNG; texture data must be decompressed on the ARM11 before upload. Cinnamon replaces TXTR and AUDO entirely with pre-baked assets in romfs: swizzled .t3x texture atlases (produced by the tex3ds tool) and .bcwav audio files. The data.win parser in Cinnamon skips TXTR and AUDO chunks at load time and reads pre-baked equivalents from romfs at asset initialization.</p>
+
+<p>The CODE chunk holds GML bytecode. Each code entry has a name (referenced by the FUNC table) and a byte array of VM instructions. The bytecode is a stack-based ISA. Each instruction is a fixed 4 bytes: 1 byte opcode, 1 byte type specifier, and 2 bytes operand or offset. The instruction set covers arithmetic (add, sub, mul, div, mod), comparison (cmp, set), stack manipulation (push, pop, dup), control flow (jmp, jt, jf, ret, exit), variable access (pushvar, popvar), and function calls (call, callv). The WAD version number (GEN8 offset 0x48) determines which opcode encodings and bytecode features are available; versions 16 and 17 are what Cinnamon currently supports.</p>
+
+<h3>GML Bytecode Execution Model</h3>
+
+<p>The GML VM is a stack machine. The interpreter maintains an execution stack (operand stack), a call stack (return addresses and local variable frames), and the instance context (self, other, global). Each frame stores local variables as a flat array indexed by slot number from the VARI table. When GML calls a script, a new frame pushes onto the call stack; on return, the frame pops and the return value sits on top of the operand stack.</p>
+
+<p>The with() statement is the most expensive GML construct for an interpreter. with(obj) creates an iterator over all instances of that object type. For each instance, the interpreter: saves the current self context, sets self to the iterated instance, executes the code block, then restores the previous context. With 200 instances and a 10-instruction body, this produces 200 context switches, 200 * 10 opcode dispatches, and 400 stack frame saves/restores. On O3DS ARM11 with Cinnamon's optimized dispatch, a with() loop over 200 instances with 15 opcodes per body takes approximately 0.5 to 1.0 ms depending on L2 residency. DR Chapter 4's 8,383 with() calls in the codebase include many loops over 50 to 200 instances; the heaviest rooms sustain 5 to 15 ms of interpreter time per frame on O3DS.</p>
+
+<p>Cinnamon's interpreter uses a computed goto dispatch table (GCC extension) rather than a switch statement. This removes the branch predictor penalty (which does not exist on ARM11 anyway) but more importantly it improves code locality: each opcode handler is a small block adjacent in memory, and the dispatch overhead is a single indirect branch load. The code override system allows hot-path GML functions (draw_sprite, draw_text, instance_place, collision_rectangle) to be replaced at load time with hand-written C implementations. The runner detects these by function name hash from the FUNC table and patches the call instruction to jump to the C version. This is the "code override" mechanism referenced throughout this document.</p>
+
+<h3>GameMaker Texture Groups and Batch Breaks</h3>
+
+<p>GameMaker organizes sprites into texture groups in the IDE. At build time, all sprites assigned to a group are packed into one or more power-of-two texture pages. At runtime, drawing from two different texture pages in sequence causes a texture swap and a batch break; the GPU pipeline stalls briefly to bind the new texture. GameMaker's own batch system flushes the current vertex buffer on: shader change, texture page change, surface target change, blend mode change, draw_rectangle or other primitive draws, tilemap draws, and view changes. This list (documented by JujuAdams in a widely-cited gist) is what defines the per-frame batch count in any GameMaker game.</p>
+
+<p>On desktop hardware, a batch break costs tens of microseconds; on ARM11 at 80 MHz effective, it costs hundreds of microseconds because the CPU must submit the current vertex batch via the GX queue, validate state, and rebuild the vertex stream for the next batch. citro2d's per-sprite-draw model means every sprite is a potential batch break if it differs from the previous sprite's texture page. With 200 sprites per frame from 50 different pages (typical for a complex Deltarune room before atlasing), citro2d produces up to 50 batch submissions per frame. citro3d's manual batching reduces this to 10 to 30 submissions by sorting by texture page and merging all sprites sharing a page into one draw call.</p>
+
+<p>GameMaker's sprite_add() and other runtime-loaded assets each create a new texture page outside the IDE-managed texture group system. Drawing these causes texture swaps that bypass the texture group optimizer. Cinnamon never calls sprite_add(); all textures are pre-baked into atlas pages and loaded into FCRAM at room init. No runtime texture page creation occurs.</p>
+
+<h3>GML surfaces and Why They Are Expensive</h3>
+
+<p>In GameMaker, surface_create() allocates a render target. All subsequent draw calls between surface_set_target() and surface_reset_target() write to that surface instead of the screen. Surfaces live in GPU texture memory (VRAM on desktop; VRAM on 3DS). On desktop, surfaces are cheap: GPU memory is fast and abundant, and switching render targets is a GPU command. On 3DS, surfaces are expensive for three reasons: they consume VRAM from the 6 MB pool (384 KB each at RGBA8 full resolution), switching render targets requires a PDC display transfer (DMA from VRAM to framebuffer), and the ARM11 must submit the target-switch command to the GX queue. GameMaker also treats surfaces as volatile: they are destroyed when the application loses focus, when GPU memory runs out, or (on 3DS) when VRAM is needed for something else. surface_exists() checks must guard every surface use.</p>
+
+<p>Deltarune's chapter-by-chapter surface count progression (0 in Chapter 1, 25 in Chapter 2, 111 in Chapter 3, 129 in Chapter 4, over 150 in Chapter 5) directly tracks the progression of lighting, compositing, and post-process effects. Each chapter adds more composited dark world layers, camera surfaces, and effect surfaces. On citro2d, each active surface requires a permanent VRAM slot for the duration it remains active. Six simultaneous surfaces at RGBA8 full resolution consume 2.25 MB of the 6 MB VRAM, leaving 3.75 MB for atlas textures, framebuffers, and depth buffers. Chapters 4 and 5 exceed this budget on certain rooms.</p>
+
+<p>The citro3d render-then-copy approach resolves this: each surface renders into VRAM one at a time, then immediately copies to FCRAM (via C3D_RenderTargetSetOutput with a GX display transfer), freeing the VRAM slot. The simultaneous VRAM requirement drops from (number of active surfaces × surface size) to (1 surface slot × surface size) regardless of how many surfaces the game has created. This is the single biggest architectural difference between the citro2d reference codebase and the citro3d fork.</p>
+
+<h3>GameMaker Extensions and Why Most Fail on 3DS</h3>
+
+<p>GameMaker extensions are native code plugins. A GMS 1.4 extension is a Windows DLL; a GMS 2 extension can be a DLL (Windows), .dylib (macOS), .so (Linux/Android), or a static library for console targets. When GML calls an extension function, control leaves the VM entirely and enters the native library. The library is loaded by the runner at startup via LoadLibraryA (Windows) or dlopen (Linux).</p>
+
+<p>On 3DS, none of these loading mechanisms exist. The homebrew runtime is a bare ARM11 executable; there is no dynamic linker, no DLL loader, and no OS-provided plugin system. Any GML code that calls an extension function will reach Cinnamon's function dispatcher, find no implementation, and either error out or silently return zero depending on how Cinnamon handles unimplemented built-ins. FMOD (Pizza Tower), Steam SDK extensions (steam_init, steam_achievement_set, etc.), crash reporter extensions, analytics extensions, and any other native plugin will all fail this way. The correct solution for each extension category is either to stub all its GML-facing functions (returning success codes that satisfy the calling code's error checks) or to reimplement the functionality using native 3DS APIs where applicable (BCWAV for audio, no equivalent for Steam).</p>
+
+<p>Pizza Tower's FMOD integration is the highest-profile example: the game makes approximately 40 to 60 distinct FMOD event calls per room transition and per gameplay moment. Every call must be stubbed or replaced. The Switch port's approach (TurtleHouse, D-Official) of completely reimplementing the fmod_sound event system in GML using GameMaker's native audio engine (then adapted further for 3DS to use BCWAV output) is the reference implementation for this class of problem.</p>
+
+</div>
+
 <div class="footer">
-  <p>Sources: 3dbrew.org, DMP PICA200 whitepapers, devkitPro/citro3d, Wikipedia PICA200, GBAtemp, real O3DS crash dump analysis, Azahar stress test v3 across all 6 axes, GML profile grep across 55,000 files across 7 game directories, 10 MB FCRAM texture validation on genuine O3DS hardware.</p>
+  <p>Sources: 3dbrew.org (Hardware, HID Services, Memory Map), DMP PICA200 spec sheet and product brochure, devkitPro/citro3d and devkitPro/citro2d GitHub repositories, devkitPro/libctru, Wikipedia PICA200, HandWiki PICA200, Nintendo 3DS Wikipedia, Rodrigo Copetti Nintendo 3DS Architecture analysis, GBAtemp hardware threads, NeoGAF PICA200 announcement thread, Slashdot GPU announcement thread, Demozoo 3DS platform page, JujuAdams batch break gist, GameMaker official optimization guide, GameMaker official surfaces documentation, GameMaker official with() documentation, Forager optimization GDC article (HappySquid), yal.cc GML decompilation and live-coding posts, ButterscotchRunner/Butterscotch runner documentation, UndertaleModTool community documentation, tcrf.net GameMaker Studio format documentation, cook-serve-hoomans data.win format documentation, Pizza Tower TCRF data page, TurtleHouse/D-Official PizzaTowerSwitch-FMOD repositories, TASVideos Pizza Tower FMOD thread, real O3DS crash dump analysis, Azahar stress test v3 across all 6 axes, GML profile grep across 55,000 files across 7 game directories, 10 MB FCRAM texture validation on genuine O3DS hardware.</p>
 </div>
 
 <script>
@@ -728,22 +900,34 @@ new Chart(document.getElementById('drChart'), {
 new Chart(document.getElementById('gamesComparisonChart'), {
   type: 'bar',
   data: {
-    labels: ['Sonic SMS\nRemake', 'Sonic.exe\nFangames', 'Pizza Tower', 'UT/DR\n(optimized)'],
+    labels: ['Antonball\nClassic', 'Sonic SMS\nRemake', 'Sonic.exe\nFangames', 'PT SAGE\n2019 Demo\n(60fps)', 'Pizza Tower\n(60fps)', 'UT/DR\n(optimized)'],
     datasets: [{
       label: 'O3DS',
-      data: [100, 100, 85, 98],
+      data: [100, 100, 100, 60, 42, 98],
       backgroundColor: accentColor,
       borderRadius: 3
     }, {
       label: 'N3DS',
-      data: [100, 100, 100, 100],
+      data: [100, 100, 100, 95, 85, 100],
       backgroundColor: greenColor,
       borderRadius: 3
     }]
   },
   options: {
     responsive: true, maintainAspectRatio: false,
-    plugins: { legend: { position: 'top' } },
+    plugins: {
+      legend: { position: 'top' },
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const label = ctx.dataset.label;
+            const val = ctx.raw;
+            const is60 = ctx.dataIndex === 3 || ctx.dataIndex === 4;
+            return `${label}: ${val}%${is60 ? ' of 16.6ms (60fps)' : ' of 33ms (30fps)'}`;
+          }
+        }
+      }
+    },
     scales: {
       y: { min: 0, max: 100, grid: { color: '#2a2a35' }, ticks: { callback: v => v + '%' } },
       x: { grid: { display: false } }
