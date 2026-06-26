@@ -83,8 +83,8 @@
 <div class="stat-grid">
   <div class="stat"><span class="value">268 MHz</span><span class="label">ARM11 CPU (1 core usable)</span></div>
   <div class="stat"><span class="value">268 MHz</span><span class="label">PICA200 GPU</span></div>
-  <div class="stat"><span class="value">6 MB</span><span class="label">VRAM (on SoC die)</span></div>
-  <div class="stat"><span class="value">128 MB</span><span class="label">FCRAM @ 3.2 GB/s</span></div>
+  <div class="stat"><span class="value">6 MB</span><span class="label">VRAM (on SoC die, 10 MB on N3DS)</span></div>
+  <div class="stat"><span class="value">128 MB</span><span class="label">FCRAM @ 3.2 GB/s (256 MB on N3DS)</span></div>
   <div class="stat"><span class="value">134 MHz</span><span class="label">CEVA TeakLite DSP</span></div>
   <div class="stat"><span class="value">400 x 240</span><span class="label">Top screen per eye</span></div>
 </div>
@@ -409,7 +409,7 @@ new Chart(document.getElementById('hardwareChart'), {
       borderRadius: 3
     }, {
       label: 'N3DS',
-      data: [804, 268, 6, 256, 134, 0.096],
+      data: [804, 268, 10, 256, 134, 0.096],
       backgroundColor: '#a78bfa',
       borderRadius: 3
     }]
