@@ -291,9 +291,9 @@
 
 <h3>Pizza Tower</h3>
 
-<p>Pizza Tower ships as YYC on Steam. YYC means there is no bytecode in the binary. Cinnamon cannot read it. This is a dead end unless the developer provides a VM build.</p>
+<p>Pizza Tower ships as bytecode. Cinnamon can target it directly.</p>
 
-<p>If it were VM bytecode, my estimate would be 85 percent on O3DS and 100 percent on N3DS. Pizza Tower has constant screen shake, heavy particle systems, transformation effects, surface based CRT overlay, and high speed layer scrolling. The per frame load is higher than Deltarune Chapter 5. The Pizza Time sequences with maximum screen effects would push the O3DS hard. N3DS would hold 30 FPS without issue.</p>
+<p>My estimate is 85 percent on O3DS and 100 percent on N3DS. Pizza Tower has constant screen shake, heavy particle systems, transformation effects, surface based CRT overlay, and high speed layer scrolling. The per frame load is higher than Deltarune Chapter 5. The Pizza Time sequences with maximum screen effects would push the O3DS hard. N3DS would hold 30 FPS without issue.</p>
 
 <div class="chart-container tall">
   <canvas id="gamesComparisonChart"></canvas>
@@ -301,7 +301,7 @@
 
 <h3>Cinnamon Current State</h3>
 
-<p>The Cinnamon codebase lives in <strong>cinnamon-main (8)</strong>. That version is outdated. It does not use citro3d yet, but it shows how the bytecode recompiler works. All the optimizations described in this document including citro3d have been applied in a separate fork. The numbers below represent what Cinnamon currently achieves on its own without the citro3d renderer backend and without the full preprocessing pipeline.</p>
+<p>The Cinnamon codebase (the reference version I examined) is from an older snapshot. That version is outdated. It does not use citro3d yet, but it shows how the bytecode recompiler works. All the optimizations described in this document including citro3d have been applied in a separate fork. The numbers below represent what Cinnamon currently achieves on its own without the citro3d renderer backend and without the full preprocessing pipeline.</p>
 
 <p>With the citro3d fork and the full stack applied, these numbers rise to the 98 to 100 percent range described earlier in this document. The chart below is the current reality. The earlier numbers are the target.</p>
 
@@ -464,7 +464,7 @@ new Chart(document.getElementById('usageChart'), {
       pointRadius: 3,
       borderWidth: 2
     }, {
-      label: 'Pizza Tower (if VM)',
+      label: 'Pizza Tower',
       data: [8, 15, 35, 15, 5],
       borderColor: yellowColor,
       backgroundColor: 'rgba(250,204,21,0.1)',
