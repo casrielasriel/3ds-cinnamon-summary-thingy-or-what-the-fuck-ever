@@ -368,7 +368,7 @@
 <tr><td style="padding:8px 12px;">Sonic SMS Remake</td><td style="text-align:center; padding:8px 12px; color:#4ade80;">100%</td><td style="text-align:center; padding:8px 12px; color:#4ade80;">100%</td></tr>
 </table>
 
-<p>100 percent on O3DS. Simple pixel art Sonic engine using Master System physics. Barely 100 sprites per frame. No surfaces, no shaders, no complex with loops. This is the easiest port in the list. Built on an older GameMaker Studio release, below WAD version 16. Exactly the kind of game the Cinnamon Launcher's pre bytecode 16 research targets.</p>
+<p>100 percent on O3DS. Simple pixel art Sonic engine using Master System physics. Barely 100 sprites per frame. No surfaces, no shaders, no complex with loops. This is the easiest port in the list. GML profile: 2,202 files across 22 folders, 3,125 draw_* calls, 0 surface_create, 7 shader_set, 274 with(). Extremely draw-call heavy relative to file count but every draw is a single sprite with zero overdraw complexity. Built on an older GameMaker Studio release, below WAD version 16. Exactly the kind of game the Cinnamon Launcher's pre bytecode 16 research targets.</p>
 
 <h3>Sonic.exe Fangames</h3>
 
@@ -401,6 +401,8 @@
 
 <p>Pizza Tower ships as bytecode. The bytecode itself is targetable by Cinnamon. The audio is not.</p>
 
+<p>GML profile: 10,684 files across 70 folders, 1,529 draw_* calls, 23 surface_create, 174 shader_set, 3,318 with(). The largest codebase in the list by a wide margin. Heavy particle system, screen shake, transformation effects, CRT overlay surface. Draw calls are modest for the file count but surface and shader usage is the highest of any game profiled.</p>
+
 <p>Unlike every other game in this list, Pizza Tower targets 60 FPS, not 30. Its frame budget is 16.6ms instead of 33ms. The percentage figures below are fractions of that 16.6ms budget, not 33ms. An 85 percent score here means roughly 9 dropped frames per second against 60 FPS, noticeably worse than the same number would look on a 30 FPS game.</p>
 
 <p>My estimate is 42 percent on O3DS and 85 percent on N3DS for rendering and logic alone. Pizza Tower has constant screen shake, heavy particle systems, transformation effects, a surface-based CRT overlay, and high speed layer scrolling. The per frame load is higher than Deltarune Chapter 5 and the halved frame budget makes every bottleneck twice as punishing. The Pizza Time sequences with maximum screen effects would push the O3DS extremely hard. N3DS gets close but still drops frames on the heaviest moments. Locking to 30 FPS as a fallback would put both systems at a comfortable 100 percent, but that is a design tradeoff, not a hardware limit.</p>
@@ -430,9 +432,22 @@
 
 <p>The SAGE 2019 demo is an earlier, lighter build of Pizza Tower released at the Sonic Amateur Games Expo in 2019. It predates the final game's FMOD integration. Audio in the demo uses GameMaker's built-in sound system rather than FMOD bank files, which removes the external DLL dependency entirely. This makes the SAGE demo a substantially easier port target than the final game.</p>
 
+<p>GML profile: 2,304 files across 30 folders, 312 draw_* calls, 2 surface_create, 19 shader_set, 552 with(). Much lighter than the full game in every dimension. The sprite draw calls are an order of magnitude fewer. Surface usage is minimal, shader overhead is low. The palette swap system in place of full shading pipelines keeps the shader complexity per call very short.</p>
+
 <p>The demo runs on GameMaker Studio 2 and targets WAD version 17. It includes three levels (Pizzascape, The Ancient Cheese, Bloodsauce Dungeon), the Snick the Porcupine character exclusive to this build, a Cowboy Task Room, and the Pizzamart item shop system with Pizza Coins and purchasable shotguns, both features cut from later builds. The frame budget is still 16.6ms; the game runs at 60 FPS same as the final release.</p>
 
 <p>The per-frame load is meaningfully lower than the final game. Fewer surfaces, simpler particle counts, no CRT overlay shader, and no FMOD event overhead. The rendering estimate for the SAGE demo is 60 percent on O3DS and 95 percent on N3DS. The FMOD blocker does not apply. Audio preprocessing to BCWAV using the standard pipeline is sufficient. This is the most practical Pizza Tower port target for Cinnamon in its current state.</p>
+
+<h3>Five Nights at Frickbears 3</h3>
+
+<table style="border-collapse:collapse; width:100%; margin:1rem 0; font-size:0.9rem;">
+<tr style="border-bottom:1px solid #2a2a35;"><th style="text-align:left; padding:8px 12px;">Game</th><th style="text-align:center; padding:8px 12px;">O3DS</th><th style="text-align:center; padding:8px 12px;">N3DS</th></tr>
+<tr><td style="padding:8px 12px;">FNaF Frickbears 3</td><td style="text-align:center; padding:8px 12px; color:#fb923c;">68%</td><td style="text-align:center; padding:8px 12px; color:#a78bfa;">93%</td></tr>
+</table>
+
+<p>GML profile: 2,837 files across 20 folders, 1,976 draw_* calls, 49 surface_create, 123 shader_set, 1,224 with(), approximately 2,300 vertex/primitive/skeleton-related calls. The surface and shader counts are extreme for a fangame of this class. The 49 surface_create calls indicate chained camera overlay and post-processing surfaces. The vertex/primitive calls point to custom mesh rendering for the animatronic characters rather than standard sprite rendering. This is the highest surface and shader complexity in the entire profile set.</p>
+
+<p>Estimate: 68 percent on O3DS, 93 percent on N3DS. The surface chain and shader pipeline are the primary bottlenecks. Each animatronic rendered as a custom mesh adds geometry load well above standard sprite rendering. The vertex buffer submission per mesh eats into the draw call budget significantly. Surface compositing in VRAM helps (eliminates display transfers for intermediate targets) but the number of distinct surface contexts (49) will exhaust VRAM surface slots quickly, forcing spills to FCRAM with the associated bandwidth cost. N3DS handles this better through the CPU clock advantage for vertex data processing and buffer management, but the surface count remains a hard architectural constraint. The shader count (123 shader_set calls) is within TEV stage mapping limits; prelinking the GML shader code into PICA200 texenv configurations would convert each shader_set into a fast TEV stage load rather than a shader compile. No external audio dependencies detected; audio preprocessing to BCWAV using the standard pipeline applies.</p>
 
 <h3>Cinnamon Current State</h3>
 
@@ -936,15 +951,15 @@ new Chart(document.getElementById('drChart'), {
 new Chart(document.getElementById('gamesComparisonChart'), {
   type: 'bar',
   data: {
-    labels: ['Antonball\nClassic', 'Sonic SMS\nRemake', 'Sonic.exe\nFangames', 'PT SAGE\n2019 Demo\n(60fps)', 'Pizza Tower\n(60fps)', 'UT/DR\n(optimized)'],
+    labels: ['Antonball\nClassic', 'Sonic SMS\nRemake', 'Sonic.exe\nFangames', 'PT SAGE\n2019 Demo\n(60fps)', 'Pizza Tower\n(60fps)', 'FNaF\nFrickbears 3', 'UT/DR\n(optimized)'],
     datasets: [{
       label: 'O3DS',
-      data: [100, 100, 100, 60, 42, 98],
+      data: [100, 100, 100, 60, 42, 68, 98],
       backgroundColor: accentColor,
       borderRadius: 3
     }, {
       label: 'N3DS',
-      data: [100, 100, 100, 95, 85, 100],
+      data: [100, 100, 100, 95, 85, 93, 100],
       backgroundColor: greenColor,
       borderRadius: 3
     }]
